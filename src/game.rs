@@ -18,6 +18,7 @@ use camera::Camera;
 
 
 pub struct GameState {
+    time: f64,
     running: bool,
 
     pressed_keys: HashSet<VirtualKeyCode>,
@@ -30,6 +31,7 @@ pub struct GameState {
     grounded: bool,
 
     boxes: Vec<BoundingBox>,
+    size: f64,
 
     crosshair: Crosshair
 }
@@ -38,9 +40,8 @@ pub struct GameState {
 impl GameState {
     pub fn new() -> GameState {
 
-        let size = 8;
-
         GameState {
+            time: 0.0,
             running: true,
 
             pressed_keys: HashSet::new(),
@@ -65,48 +66,8 @@ impl GameState {
             velocity: Vector3::new(0.0, 0.0, 0.0),
             grounded: false,
 
-            boxes: {
-                let mut boxes = vec![
-                    // BoundingBox::cube(Vector3::new(0.0, 0.0, 0.0), 0.5),
-
-                    // Floor
-                    BoundingBox {
-                        min: Vector3::new(-size as f64 - 0.0, -0.75, -size as f64 - 0.0),
-                        max: Vector3::new(size as f64 + 0.0, -0.5, size as f64 + 0.0),
-                    },
-
-                    // Walls
-                    BoundingBox {
-                        min: Vector3::new(-size as f64 - 0.5, -0.75, -size as f64 - 0.5),
-                        max: Vector3::new(-size as f64 - 0.0, 3.0, size as f64 + 0.5),
-                    },
-                    BoundingBox {
-                        min: Vector3::new(size as f64 + 0.0, -0.75, -size as f64 - 0.5),
-                        max: Vector3::new(size as f64 + 0.5, 3.0, size as f64 + 0.5),
-                    },
-                    BoundingBox {
-                        min: Vector3::new(-size as f64 - 0.5, -0.75, -size as f64 - 0.5),
-                        max: Vector3::new(size as f64 + 0.5, 3.0, -size as f64 - 0.0),
-                    },
-                    BoundingBox {
-                        min: Vector3::new(-size as f64 - 0.5, -0.75, size as f64 + 0.0),
-                        max: Vector3::new(size as f64 + 0.5, 3.0, size as f64 + 0.5),
-                    }
-                ];
-
-                for x in -size + 5..size - 5+1 {
-                    for y in 2..7+3 {
-                        for z in -size + 5..size - 5 +1 {
-                            boxes.push(BoundingBox::cube(
-                                Vector3::new(x as f64, y as f64, z as f64),
-                                0.25
-                            ));
-                        }
-                    }
-                }
-
-                boxes
-            },
+            boxes: vec![],
+            size: 1.0,
 
             crosshair: Crosshair {
                 x: 0.0,
@@ -117,14 +78,90 @@ impl GameState {
         }
     }
 
+    fn get_boxes(&self) -> Vec<BoundingBox> {
+        let count = 16;
+
+        let mut boxes = vec![
+            // BoundingBox::cube(Vector3::new(0.0, 0.0, 0.0), 0.5),
+
+            // Floor
+            BoundingBox {
+                min: Vector3::new(-count as f64 - 0.0, -0.75, -count as f64 - 0.0),
+                max: Vector3::new(count as f64 + 0.0, -0.5, count as f64 + 0.0),
+            },
+
+            // Walls
+            BoundingBox {
+                min: Vector3::new(-count as f64 - 0.5, -0.75, -count as f64 - 0.5),
+                max: Vector3::new(-count as f64 - 0.0, 3.0, count as f64 + 0.5),
+            },
+            BoundingBox {
+                min: Vector3::new(count as f64 + 0.0, -0.75, -count as f64 - 0.5),
+                max: Vector3::new(count as f64 + 0.5, 3.0, count as f64 + 0.5),
+            },
+            BoundingBox {
+                min: Vector3::new(-count as f64 - 0.5, -0.75, -count as f64 - 0.5),
+                max: Vector3::new(count as f64 + 0.5, 3.0, -count as f64 - 0.0),
+            },
+            BoundingBox {
+                min: Vector3::new(-count as f64 - 0.5, -0.75, count as f64 + 0.0),
+                max: Vector3::new(count as f64 + 0.5, 3.0, count as f64 + 0.5),
+            }
+        ];
+
+        let margin: i32 = 8;
+
+        for x in -count + margin..count - margin+1 {
+            for y in 2..count+3 {
+                for z in -count + margin..count - margin +1 {
+                    boxes.push(BoundingBox::cube(
+                        Vector3::new(x as f64, y as f64, z as f64),
+                        ((self.time + (x + y + z) as f64).sin() * 0.5 + 0.5) * 0.35 + 0.05
+                    ));
+                }
+            }
+        }
+
+        boxes
+    }
+
+
     pub fn running(&self) -> bool {
         self.running
     }
 
 
     pub fn update(&mut self, dt: f64) {
+        self.time += dt;
+
+        self.boxes = Self::get_boxes(self);
+
+        self.check_player_movement(dt);
+
+
+        if self.key_down(VirtualKeyCode::Q) {
+            self.size -= 4.0 * dt;
+
+            if self.size < 0.1 {
+                self.size = 0.1;
+            }
+        }
+
+        if self.key_down(VirtualKeyCode::E) {
+            self.size += 4.0 * dt;
+
+            if self.size > 4.0 {
+                self.size = 4.0;
+            }
+        }
+
+        self.check_collisions();
+    }
+
+
+    fn check_player_movement(&mut self, dt: f64) {
         let mut move_direction = Vector3::new(0.0, 0.0, 0.0);
-        let mut speed = 3.0;
+        let mut speed = 3.0 * self.size;
 
         let right = self.camera.direction().cross(Vector3::new(0.0, 1.0, 0.0));
 
@@ -152,19 +189,19 @@ impl GameState {
 
         self.velocity.y -= dt * 8.0;
         self.camera.position += dt * self.velocity;
-
-
-        self.check_collisions();
     }
 
 
     fn check_collisions(&mut self) {
         self.grounded = false;
 
+        let width = 0.4 * self.size;
+        let height = 1.8 * self.size;
+
         for b in self.boxes.iter() {
             let hull = BoundingBox {
-                min: self.camera.position - Vector3::new(0.4, 1.6, 0.4),
-                max: self.camera.position + Vector3::new(0.4, 0.3, 0.4)
+                min: self.camera.position - Vector3::new(width, height * 5.0 / 6.0, width),
+                max: self.camera.position + Vector3::new(width, height / 6.0, width)
             };
 
             if let Some(resolve) = hull.overlap(b) {
@@ -309,7 +346,7 @@ impl GameState {
 
             VirtualKeyCode::Space => {
                 if self.grounded {
-                    self.velocity.y += 4.5;
+                    self.velocity.y += 4.5 * self.size.sqrt();
                 }
             }
 

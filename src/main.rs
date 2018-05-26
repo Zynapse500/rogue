@@ -52,29 +52,17 @@ fn main() {
     let mut running = true;
     let mut stopwatch = Stopwatch::new();
 
-    let mut timer = Stopwatch::new();
-
     while game.running() {
-        timer.tick();
-
         events_loop.poll_events(|e| {
             game.handle_event(e);
         });
-        println!("Event: {}", timer.tick());
-        timer.tick();
 
         let delta_time = stopwatch.tick();
         game.update(delta_time);
-        println!("Update: {}", timer.tick());
-        timer.tick();
 
         screen.render(|mut frame| {
             game.draw(&mut frame);
         });
-        println!("Render: {}", timer.tick());
-        timer.tick();
-
-        println!("#End\n");
     }
 }
 
