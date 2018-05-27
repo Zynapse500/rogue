@@ -16,6 +16,10 @@ use bounding_box::BoundingBox;
 use camera::Camera;
 
 
+mod world;
+use self::world::*;
+
+
 
 pub struct GameState {
     time: f64,
@@ -33,7 +37,11 @@ pub struct GameState {
     boxes: Vec<BoundingBox>,
     size: f64,
 
-    crosshair: Crosshair
+    crosshair: Crosshair,
+
+
+    world: World,
+    cubes: Vec<BoundingBox>
 }
 
 
@@ -74,49 +82,26 @@ impl GameState {
                 y: 0.0,
                 size: 25.0,
                 width: 2.0,
-            }
+            },
+
+            world: World::new(),
+            cubes: Vec::new()
         }
     }
 
     fn get_boxes(&self) -> Vec<BoundingBox> {
-        let count = 16;
+        let count = 4;
 
-        let mut boxes = vec![
-            // BoundingBox::cube(Vector3::new(0.0, 0.0, 0.0), 0.5),
+        let mut boxes = Vec::new();
 
-            // Floor
-            BoundingBox {
-                min: Vector3::new(-count as f64 - 0.0, -0.75, -count as f64 - 0.0),
-                max: Vector3::new(count as f64 + 0.0, -0.5, count as f64 + 0.0),
-            },
-
-            // Walls
-            BoundingBox {
-                min: Vector3::new(-count as f64 - 0.5, -0.75, -count as f64 - 0.5),
-                max: Vector3::new(-count as f64 - 0.0, 3.0, count as f64 + 0.5),
-            },
-            BoundingBox {
-                min: Vector3::new(count as f64 + 0.0, -0.75, -count as f64 - 0.5),
-                max: Vector3::new(count as f64 + 0.5, 3.0, count as f64 + 0.5),
-            },
-            BoundingBox {
-                min: Vector3::new(-count as f64 - 0.5, -0.75, -count as f64 - 0.5),
-                max: Vector3::new(count as f64 + 0.5, 3.0, -count as f64 - 0.0),
-            },
-            BoundingBox {
-                min: Vector3::new(-count as f64 - 0.5, -0.75, count as f64 + 0.0),
-                max: Vector3::new(count as f64 + 0.5, 3.0, count as f64 + 0.5),
-            }
-        ];
-
-        let margin: i32 = 8;
+        let margin: i32 = 0;
 
         for x in -count + margin..count - margin+1 {
-            for y in 2..count+3 {
+            for y in 3..count*2+4 {
                 for z in -count + margin..count - margin +1 {
                     boxes.push(BoundingBox::cube(
                         Vector3::new(x as f64, y as f64, z as f64),
-                        ((self.time + (x + y + z) as f64).sin() * 0.5 + 0.5) * 0.35 + 0.05
+                        ((self.time + (x + y + z) as f64).sin() * (self.time * 0.5).cos() * 0.5 + 0.5) * 0.35 + 0.05
                     ));
                 }
             }
@@ -138,6 +123,7 @@ impl GameState {
 
         self.check_player_movement(dt);
 
+        self.world.explore(self.camera.position);
 
         if self.key_down(VirtualKeyCode::Q) {
             self.size -= 4.0 * dt;
@@ -161,7 +147,7 @@ impl GameState {
 
     fn check_player_movement(&mut self, dt: f64) {
         let mut move_direction = Vector3::new(0.0, 0.0, 0.0);
-        let mut speed = 3.0 * self.size;
+        let mut speed = 6.0 * self.size;
 
         let right = self.camera.direction().cross(Vector3::new(0.0, 1.0, 0.0));
 
@@ -195,16 +181,10 @@ impl GameState {
     fn check_collisions(&mut self) {
         self.grounded = false;
 
-        let width = 0.4 * self.size;
-        let height = 1.8 * self.size;
+        for collider in self.world.get_colliders().chain(self.cubes.iter()) {
+            let hull = self.get_hull();
 
-        for b in self.boxes.iter() {
-            let hull = BoundingBox {
-                min: self.camera.position - Vector3::new(width, height * 5.0 / 6.0, width),
-                max: self.camera.position + Vector3::new(width, height / 6.0, width)
-            };
-
-            if let Some(resolve) = hull.overlap(b) {
+            if let Some(resolve) = hull.overlap(collider) {
                 self.camera.position += resolve;
 
 
@@ -220,6 +200,18 @@ impl GameState {
     }
 
 
+    fn get_hull(&self) -> BoundingBox {
+        let width = 0.4 * self.size;
+        let height = 1.8 * self.size;
+
+        BoundingBox {
+            min: self.camera.position - Vector3::new(width, height * 5.0 / 6.0, width),
+            max: self.camera.position + Vector3::new(width, height / 6.0, width),
+            color: Some(Color::new(1.0, 0.0, 0.0, 1.0))
+        }
+    }
+
+
     //
     // Rendering
     //
@@ -229,9 +221,18 @@ impl GameState {
 
         frame.set_projection(self.perspective);
         frame.set_view(self.camera.view());
-//        frame.set_view(View::None);
 
 
+        self.draw_scene(frame);
+
+        frame.set_projection(self.orthographic);
+        frame.set_view(View::None);
+
+        self.draw_ui(frame);
+    }
+
+
+    fn draw_scene(&mut self, frame: &mut Frame) {
         // All objects to draw
         let mut drawables: Vec<&Draw> = Vec::new();
 
@@ -240,17 +241,58 @@ impl GameState {
             drawables.push(b);
         }
 
+        // Draw the world
+        frame.draw(&self.world);
+
+        for cube in self.cubes.iter() {
+            frame.draw(cube);
+        }
+
         // Draw all objects
         for drawable in drawables.into_iter() {
             frame.draw(drawable);
         }
-
-
-        frame.set_projection(self.orthographic);
-        frame.set_view(View::None);
-        frame.draw(&self.crosshair);
     }
 
+
+    fn draw_ui(&mut self, frame: &mut Frame) {
+        frame.draw(&self.crosshair);
+
+        self.draw_minimap(frame, 300, 300);
+    }
+
+
+    fn draw_minimap(&mut self, frame: &mut Frame, width: u32, height: u32) {
+        let distance = 100.0;
+
+        frame.set_viewport(Some(Rect {
+            left: 0,
+            bottom: 0,
+            width,
+            height
+        }));
+
+        frame.clear(Color::new(0.0, 0.0, 0.0, 1.0));
+
+        frame.set_projection(Projection::Perspective {
+            fov: 70.0,
+            aspect: width as f64 / height as f64,
+            near: 0.01,
+            far: distance + 10.0,
+        });
+
+        let up = Vector3::new(0.0, 1.0, 0.0);
+
+        frame.set_view(View::LookAt {
+            eye: Vector3::new(self.camera.position.x, distance, self.camera.position.z),
+            target: self.camera.position,
+            up: up.cross(self.camera.direction()).cross(up)
+        });
+
+        self.draw_scene(frame);
+
+        frame.draw(&self.get_hull());
+    }
 
 
     //
@@ -289,6 +331,20 @@ impl GameState {
                     ElementState::Released => {
                         self.pressed_keys.remove(&virtual_keycode);
                         self.key_released(virtual_keycode);
+                    }
+                }
+            }
+
+            WindowEvent::MouseInput {
+                state, button, ..
+            } => {
+                match state {
+                    ElementState::Pressed => {
+                        self.mouse_pressed(button);
+                    }
+
+                    ElementState::Released => {
+                        self.mouse_released(button);
                     }
                 }
             }
@@ -350,6 +406,16 @@ impl GameState {
                 }
             }
 
+            VirtualKeyCode::Tab => {
+                self.world.explore(self.camera.position);
+            }
+
+            VirtualKeyCode::R => {
+                self.camera.position.x = 0.0;
+                self.camera.position.y = self.get_hull().size().y;
+                self.camera.position.z = 0.0;
+            }
+
             _ => ()
         }
     }
@@ -358,6 +424,31 @@ impl GameState {
 
     fn key_down(&self, key: VirtualKeyCode) -> bool {
         self.pressed_keys.contains(&key)
+    }
+
+
+    fn mouse_pressed(&mut self, button: MouseButton) {
+
+        let result = self.world.get_colliders()
+            .chain(self.cubes.iter())
+            .filter_map(|c|{
+                c.hit_scan(self.camera.position, self.camera.direction())
+            }).min_by(|a, b| {
+            a.0.partial_cmp(&b.0).unwrap()
+        });
+
+        if let Some((distance, normal)) = result {
+            let t = 0.1;
+
+            self.cubes.push(BoundingBox::cube(
+                self.camera.position + distance * self.camera.direction() + normal * t,
+                t
+            ))
+        }
+    }
+
+    fn mouse_released(&mut self, button: MouseButton) {
+
     }
 }
 
@@ -374,13 +465,13 @@ struct Crosshair {
 
 
 impl Draw for Crosshair {
-    fn triangulate(&self) -> Triangles {
+    fn draw(&self) -> DrawCommand {
         let r = self.width as f32 / 2.0;
         let s = self.size as f32 / 2.0;
 
         const COLOR: [f32; 4] = [0.1, 0.3, 0.4, 1.0];
 
-        Triangles::IndexedList {
+        DrawCommand::IndexedVertices {
             vertices: vec![
                 Vertex { position: [self.x as f32 - r, self.y as f32 - s, 0.0], color: COLOR },
                 Vertex { position: [self.x as f32 + r, self.y as f32 - s, 0.0], color: COLOR },

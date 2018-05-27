@@ -4,6 +4,10 @@ use graphics_3d::*;
 extern crate trap;
 use trap::Vector3;
 
+
+extern crate rand;
+
+
 mod bounding_box;
 use bounding_box::BoundingBox;
 
