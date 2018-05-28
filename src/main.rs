@@ -64,8 +64,8 @@ fn main() {
         let delta_time = stopwatch.tick();
         game.update(delta_time);
 
-        screen.render(|mut frame| {
-            game.draw(&mut frame);
+        screen.render(|frame| {
+            game.draw(frame);
         });
     }
 }

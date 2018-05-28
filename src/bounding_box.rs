@@ -147,7 +147,7 @@ impl BoundingBox {
         };
 
 
-        if entry < exit && entry >= 0.0 {
+        if 0.0 < entry && entry < exit {
             if time_entry.x > time_entry.y && time_entry.x > time_entry.z {
                 Some((entry, Vector3::new(if direction.x > 0.0 {-1.0} else {1.0}, 0.0, 0.0)))
             } else if time_entry.y > time_entry.x && time_entry.y > time_entry.z {

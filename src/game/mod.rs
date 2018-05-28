@@ -41,7 +41,7 @@ pub struct GameState {
 
 
     world: World,
-    cubes: Vec<BoundingBox>
+    particles: Vec<Particle>
 }
 
 
@@ -85,7 +85,7 @@ impl GameState {
             },
 
             world: World::new(),
-            cubes: Vec::new()
+            particles: Vec::new()
         }
     }
 
@@ -125,6 +125,10 @@ impl GameState {
 
         self.world.explore(self.camera.position);
 
+
+        self.update_particles(dt);
+
+
         if self.key_down(VirtualKeyCode::Q) {
             self.size -= 4.0 * dt;
 
@@ -140,6 +144,7 @@ impl GameState {
                 self.size = 4.0;
             }
         }
+
 
         self.check_collisions();
     }
@@ -177,11 +182,33 @@ impl GameState {
         self.camera.position += dt * self.velocity;
     }
 
+    fn update_particles(&mut self, dt: f64) {
+        let mut i = 0;
+        while i < self.particles.len() {
+            let remove = {
+                let particle = &mut self.particles[i];
+                particle.position += dt * particle.velocity;
+
+                particle.size -= 0.5 * dt;
+                if particle.size < 0.0 {
+                    true
+                } else {
+                    false
+                }
+            };
+
+            if remove {
+                self.particles.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
 
     fn check_collisions(&mut self) {
         self.grounded = false;
 
-        for collider in self.world.get_colliders().chain(self.cubes.iter()) {
+        for collider in self.world.get_colliders() {
             let hull = self.get_hull();
 
             if let Some(resolve) = hull.overlap(collider) {
@@ -219,20 +246,20 @@ impl GameState {
     pub fn draw(&mut self, frame: &mut Frame) {
         frame.clear(Color::new(0.01, 0.01, 0.01, 1.0));
 
-        frame.set_projection(self.perspective);
-        frame.set_view(self.camera.view());
+        //frame.render_pass(|mut pass|{
+            frame.set_projection(self.perspective);
+            frame.set_view(self.camera.view());
 
+            self.draw_scene(frame);
+        //});
 
-        self.draw_scene(frame);
-
-        frame.set_projection(self.orthographic);
-        frame.set_view(View::None);
-
-        self.draw_ui(frame);
+        //frame.render_pass(|mut pass| {
+            self.draw_ui(frame);
+        //});
     }
 
 
-    fn draw_scene(&mut self, frame: &mut Frame) {
+    fn draw_scene(&mut self, pass: &mut Frame) {
         // All objects to draw
         let mut drawables: Vec<&Draw> = Vec::new();
 
@@ -242,39 +269,43 @@ impl GameState {
         }
 
         // Draw the world
-        frame.draw(&self.world);
+        pass.draw(&self.world);
 
-        for cube in self.cubes.iter() {
-            frame.draw(cube);
+        for particle in self.particles.iter() {
+            pass.draw(particle);
         }
 
         // Draw all objects
         for drawable in drawables.into_iter() {
-            frame.draw(drawable);
+            pass.draw(drawable);
         }
     }
 
 
-    fn draw_ui(&mut self, frame: &mut Frame) {
-        frame.draw(&self.crosshair);
+    fn draw_ui(&mut self, pass: &mut Frame) {
+        pass.set_projection(self.orthographic);
+        pass.set_view(View::None);
 
-        self.draw_minimap(frame, 300, 300);
+        pass.draw(&self.crosshair);
+
+
+        self.draw_minimap(pass, 300, 300);
     }
 
 
-    fn draw_minimap(&mut self, frame: &mut Frame, width: u32, height: u32) {
+    fn draw_minimap(&mut self, pass: &mut Frame, width: u32, height: u32) {
         let distance = 100.0;
 
-        frame.set_viewport(Some(Rect {
+        pass.set_viewport(Some(Rect {
             left: 0,
             bottom: 0,
             width,
             height
         }));
 
-        frame.clear(Color::new(0.0, 0.0, 0.0, 1.0));
+        pass.clear(Color::new(0.0, 0.0, 0.0, 1.0));
 
-        frame.set_projection(Projection::Perspective {
+        pass.set_projection(Projection::Perspective {
             fov: 70.0,
             aspect: width as f64 / height as f64,
             near: 0.01,
@@ -283,15 +314,15 @@ impl GameState {
 
         let up = Vector3::new(0.0, 1.0, 0.0);
 
-        frame.set_view(View::LookAt {
+        pass.set_view(View::LookAt {
             eye: Vector3::new(self.camera.position.x, distance, self.camera.position.z),
             target: self.camera.position,
             up: up.cross(self.camera.direction()).cross(up)
         });
 
-        self.draw_scene(frame);
+        self.draw_scene(pass);
 
-        frame.draw(&self.get_hull());
+        pass.draw(&self.get_hull());
     }
 
 
@@ -428,9 +459,7 @@ impl GameState {
 
 
     fn mouse_pressed(&mut self, button: MouseButton) {
-
         let result = self.world.get_colliders()
-            .chain(self.cubes.iter())
             .filter_map(|c|{
                 c.hit_scan(self.camera.position, self.camera.direction())
             }).min_by(|a, b| {
@@ -438,12 +467,40 @@ impl GameState {
         });
 
         if let Some((distance, normal)) = result {
-            let t = 0.1;
+            let hit = self.camera.position + distance * self.camera.direction();
+            let reflection = self.camera.direction().reflect(normal);
 
-            self.cubes.push(BoundingBox::cube(
-                self.camera.position + distance * self.camera.direction() + normal * t,
-                t
-            ))
+
+            use rand::{
+                thread_rng,
+                Rng
+            };
+
+            let mut rng = thread_rng();
+
+            let perp_x = reflection.cross(Vector3::new(
+                rng.gen_range(0.01, 1.0),
+                rng.gen_range(0.01, 1.0),
+                rng.gen_range(0.01, 1.0)
+            )).normal();
+
+            let perp_y = perp_x.cross(reflection);
+
+            for _ in 0..10 {
+                let theta = rng.gen_range(0.0, 2.0 * PI);
+                let eta = rng.gen_range(0.0, PI / 4.0);
+
+                let r = rng.gen_range(0.0, 0.4);
+                let (dy, dx) = theta.sin_cos();
+
+                let particle = Particle {
+                    position: hit,
+                    velocity: 8.0 * (reflection + r * dx * perp_x + r * dy * perp_y).normal(),
+                    size: rng.gen_range(0.05, 0.2),
+                };
+
+                self.particles.push(particle);
+            }
         }
     }
 
@@ -488,5 +545,19 @@ impl Draw for Crosshair {
                 4, 5, 6, 6, 7, 4
             ],
         }
+    }
+}
+
+
+
+struct Particle {
+    position: Vector3,
+    velocity: Vector3,
+    size: f64
+}
+
+impl Draw for Particle {
+    fn draw(&self) -> DrawCommand {
+        BoundingBox::cube(self.position, self.size).draw()
     }
 }
