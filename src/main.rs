@@ -1,12 +1,27 @@
 extern crate graphics_3d;
-use graphics_3d::*;
 
-extern crate trap;
+use graphics_3d::{
+    glutin::{
+        EventsLoop,
+        WindowBuilder,
+        ContextBuilder,
+
+        Event,
+        WindowEvent,
+
+        KeyboardInput,
+        VirtualKeyCode
+    },
+
+    Display
+};
+
+
+/*extern crate trap;
 use trap::Vector3;
 
 
 extern crate rand;
-
 
 mod bounding_box;
 use bounding_box::BoundingBox;
@@ -28,9 +43,10 @@ use std::{
     time::{
         Instant
     }
-};
+};*/
 
 
+/*
 
 fn main() {
     let mut events_loop = EventsLoop::new();
@@ -70,3 +86,46 @@ fn main() {
     }
 }
 
+*/
+
+
+fn main() {
+    let mut events_loop = EventsLoop::new();
+
+    let mut display = {
+        let window = WindowBuilder::new()
+            .with_title("gfx");
+
+        let context = ContextBuilder::new()
+            .with_vsync(true);
+
+        Display::new(window, context, &events_loop)
+    };
+
+
+    let mut running = true;
+
+    while running {
+        events_loop.poll_events(|event|{
+            match event {
+                Event::WindowEvent { event, .. } => {
+                    match event {
+                        WindowEvent::CloseRequested |
+                        WindowEvent::KeyboardInput { input: KeyboardInput {
+                            virtual_keycode: Some(VirtualKeyCode::Escape), ..
+                        }, .. } => {
+                            running = false;
+                        },
+
+                        _ => ()
+                    }
+                },
+
+                _ => ()
+            }
+        });
+
+
+        display.clear();
+    }
+}
