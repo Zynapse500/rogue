@@ -1,8 +1,9 @@
 
-use trap::Vector3;
 use graphics_3d::{
     PI,
-    View
+    View,
+
+    trap::Vector3
 };
 
 pub struct Camera {

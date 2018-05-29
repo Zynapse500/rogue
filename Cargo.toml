@@ -5,6 +5,5 @@ authors = ["Christofer Nolander <christofer.nolander@gmail.com>"]
 
 [dependencies]
 graphics_3d = {path = "../Graphics 3D"}
-trap = {path = "../trap-rs"}
 
 rand = "0.5.0"

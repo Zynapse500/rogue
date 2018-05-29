@@ -23,7 +23,7 @@ use bounding_box::{
 
 const PASSAGE_WIDTH: f64 = 3.0;
 const WALL_THICKNESS: f64 = 0.5;
-const WALL_HEIGHT: f64 = 5.0;
+const WALL_HEIGHT: f64 = 5.5;
 
 
 

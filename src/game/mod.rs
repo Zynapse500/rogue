@@ -1,5 +1,4 @@
 
-use stopwatch::Stopwatch;
 
 use std::{
     collections::{
@@ -8,8 +7,23 @@ use std::{
 };
 
 use graphics_3d::*;
+use graphics_3d::{
+    trap::{
+        Vector3
+    },
 
-use trap::Vector3;
+    glutin::{
+        Event,
+        WindowEvent,
+        DeviceEvent,
+
+        KeyboardInput,
+
+        VirtualKeyCode,
+        ElementState,
+        MouseButton,
+    }
+};
 
 use bounding_box::BoundingBox;
 
@@ -22,8 +36,10 @@ use self::world::*;
 
 
 pub struct GameState {
-    time: f64,
     running: bool,
+
+    time: f64,
+    accumulator: f64,
 
     pressed_keys: HashSet<VirtualKeyCode>,
 
@@ -49,8 +65,10 @@ impl GameState {
     pub fn new() -> GameState {
 
         GameState {
-            time: 0.0,
             running: true,
+
+            time: 0.0,
+            accumulator: 0.0,
 
             pressed_keys: HashSet::new(),
 
@@ -118,35 +136,46 @@ impl GameState {
 
     pub fn update(&mut self, dt: f64) {
         self.time += dt;
+        self.accumulator += dt;
 
         self.boxes = Self::get_boxes(self);
 
-        self.check_player_movement(dt);
+        const TIME_STEP: f64 = 1.0 / 1000.0;
 
-        self.world.explore(self.camera.position);
-
-
-        self.update_particles(dt);
-
-
-        if self.key_down(VirtualKeyCode::Q) {
-            self.size -= 4.0 * dt;
-
-            if self.size < 0.1 {
-                self.size = 0.1;
+        while self.accumulator > TIME_STEP {
+            if self.accumulator > 0.5 {
+                self.accumulator = 0.0;
+            } else {
+                self.accumulator -= TIME_STEP;
             }
-        }
 
-        if self.key_down(VirtualKeyCode::E) {
-            self.size += 4.0 * dt;
+            self.check_player_movement(TIME_STEP);
 
-            if self.size > 4.0 {
-                self.size = 4.0;
+            self.world.explore(self.camera.position);
+
+
+            self.update_particles(TIME_STEP);
+
+
+            if self.key_down(VirtualKeyCode::Q) {
+                self.size -= 4.0 * TIME_STEP;
+
+                if self.size < 0.1 {
+                    self.size = 0.1;
+                }
             }
+
+            if self.key_down(VirtualKeyCode::E) {
+                self.size += 4.0 * TIME_STEP;
+
+                if self.size > 4.0 {
+                    self.size = 4.0;
+                }
+            }
+
+
+            self.check_collisions();
         }
-
-
-        self.check_collisions();
     }
 
 
@@ -189,8 +218,10 @@ impl GameState {
                 let particle = &mut self.particles[i];
                 particle.position += dt * particle.velocity;
 
-                particle.size -= 0.5 * dt;
-                if particle.size < 0.0 {
+                particle.velocity -= dt * 3.5 * particle.velocity;
+
+                particle.size -= 0.125 * dt;
+                if particle.size < 0.00 {
                     true
                 } else {
                     false
@@ -246,20 +277,16 @@ impl GameState {
     pub fn draw(&mut self, frame: &mut Frame) {
         frame.clear(Color::new(0.01, 0.01, 0.01, 1.0));
 
-        //frame.render_pass(|mut pass|{
-            frame.set_projection(self.perspective);
-            frame.set_view(self.camera.view());
+        frame.set_projection(self.perspective);
+        frame.set_view(self.camera.view());
 
-            self.draw_scene(frame);
-        //});
+        self.draw_scene(frame);
 
-        //frame.render_pass(|mut pass| {
-            self.draw_ui(frame);
-        //});
+        self.draw_ui(frame);
     }
 
 
-    fn draw_scene(&mut self, pass: &mut Frame) {
+    fn draw_scene(&mut self, frame: &mut Frame) {
         // All objects to draw
         let mut drawables: Vec<&Draw> = Vec::new();
 
@@ -269,31 +296,31 @@ impl GameState {
         }
 
         // Draw the world
-        pass.draw(&self.world);
+        frame.draw(&self.world);
 
         for particle in self.particles.iter() {
-            pass.draw(particle);
+            frame.draw(particle);
         }
 
         // Draw all objects
         for drawable in drawables.into_iter() {
-            pass.draw(drawable);
+            frame.draw(drawable);
         }
     }
 
 
-    fn draw_ui(&mut self, pass: &mut Frame) {
-        pass.set_projection(self.orthographic);
-        pass.set_view(View::None);
+    fn draw_ui(&mut self, frame: &mut Frame) {
+        frame.set_projection(self.orthographic);
+        frame.set_view(View::None);
 
-        pass.draw(&self.crosshair);
+        frame.clear_depth();
+        frame.draw(&self.crosshair);
 
-
-        self.draw_minimap(pass, 300, 300);
+        // self.draw_minimap(frame, 300, 300);
     }
 
 
-    fn draw_minimap(&mut self, pass: &mut Frame, width: u32, height: u32) {
+    /*fn draw_minimap(&mut self, pass: &mut Frame, width: u32, height: u32) {
         let distance = 100.0;
 
         pass.set_viewport(Some(Rect {
@@ -323,7 +350,7 @@ impl GameState {
         self.draw_scene(pass);
 
         pass.draw(&self.get_hull());
-    }
+    }*/
 
 
     //
@@ -346,7 +373,7 @@ impl GameState {
 
     fn handle_window_event(&mut self, event: WindowEvent) {
         match event {
-            WindowEvent::Closed => { self.close(); }
+            WindowEvent::CloseRequested => { self.close(); }
 
             WindowEvent::KeyboardInput {
                 input: KeyboardInput {
@@ -451,13 +478,15 @@ impl GameState {
         }
     }
 
+
+    #[allow(unused_variables)]
     fn key_released(&mut self, key: VirtualKeyCode) {}
 
     fn key_down(&self, key: VirtualKeyCode) -> bool {
         self.pressed_keys.contains(&key)
     }
 
-
+    #[allow(unused_variables)]
     fn mouse_pressed(&mut self, button: MouseButton) {
         let result = self.world.get_colliders()
             .filter_map(|c|{
@@ -486,17 +515,16 @@ impl GameState {
 
             let perp_y = perp_x.cross(reflection);
 
-            for _ in 0..10 {
+            for _ in 0..400 {
                 let theta = rng.gen_range(0.0, 2.0 * PI);
-                let eta = rng.gen_range(0.0, PI / 4.0);
 
                 let r = rng.gen_range(0.0, 0.4);
                 let (dy, dx) = theta.sin_cos();
 
                 let particle = Particle {
                     position: hit,
-                    velocity: 8.0 * (reflection + r * dx * perp_x + r * dy * perp_y).normal(),
-                    size: rng.gen_range(0.05, 0.2),
+                    velocity: rng.gen_range(1.0, 8.0) * (reflection + r * dx * perp_x + r * dy * perp_y).normal(),
+                    size: rng.gen_range(0.05, 0.1),
                 };
 
                 self.particles.push(particle);
@@ -504,6 +532,7 @@ impl GameState {
         }
     }
 
+    #[allow(unused_variables)]
     fn mouse_released(&mut self, button: MouseButton) {
 
     }
@@ -530,14 +559,14 @@ impl Draw for Crosshair {
 
         DrawCommand::IndexedVertices {
             vertices: vec![
-                Vertex { position: [self.x as f32 - r, self.y as f32 - s, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 + r, self.y as f32 - s, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 + r, self.y as f32 + s, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 - r, self.y as f32 + s, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 - s, self.y as f32 - r, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 - s, self.y as f32 + r, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 + s, self.y as f32 + r, 0.0], color: COLOR },
-                Vertex { position: [self.x as f32 + s, self.y as f32 - r, 0.0], color: COLOR },
+                Vertex::new([self.x as f32 - r, self.y as f32 - s, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 + r, self.y as f32 - s, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 + r, self.y as f32 + s, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 - r, self.y as f32 + s, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 - s, self.y as f32 - r, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 - s, self.y as f32 + r, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 + s, self.y as f32 + r, 0.0]).with_color(COLOR),
+                Vertex::new([self.x as f32 + s, self.y as f32 - r, 0.0]).with_color(COLOR),
             ],
 
             indices: vec![

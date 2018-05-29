@@ -3,12 +3,12 @@ use std::f64::{
     INFINITY
 };
 
-use trap::{
-    Vector3,
-    Vector2
-};
-
 use graphics_3d::{
+    trap::{
+        Vector3,
+        Vector2
+    },
+
     Draw,
     DrawCommand,
     Vertex,
@@ -35,6 +35,7 @@ impl BoundingBox {
     }
 
 
+    #[allow(dead_code)]
     pub fn center(&self) -> Vector3 {
         0.5 * (self.min + self.max)
     }
